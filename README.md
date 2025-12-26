@@ -12,6 +12,8 @@
 
 </div>
 
+![CLIProxy Dashboard Preview](docs/CliProxyAPI-Dashboard.jpg)
+
 ---
 
 ## 📖 Documentation

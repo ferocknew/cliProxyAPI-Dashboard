@@ -12,6 +12,8 @@
 
 ---
 
+![CLIProxy Dashboard Overview](CliProxyAPI-Dashboard.jpg)
+
 ## Truy Cập Dashboard
 
 Sau khi khởi động CLIProxy server, truy cập Dashboard tại:
