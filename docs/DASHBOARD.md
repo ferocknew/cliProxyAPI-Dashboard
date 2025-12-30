@@ -26,7 +26,7 @@ http://localhost:8317/static/management.html
 
 ### Xác Thực
 
-Lần đầu truy cập, bạn sẽ được yêu cầu nhập **Management Key**. Key này được định nghĩa trong file `config.yaml` (nằm trong section `remote-management`):
+Lần đầu truy cập, bạn **BẮT BUỘC** phải nhập **Management Key**. Key này được định nghĩa trong file `config.yaml` (nằm trong section `remote-management`). Nếu chưa có, bạn phải thêm vào:
 
 ```yaml
 remote-management:

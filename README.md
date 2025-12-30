@@ -174,8 +174,13 @@ go run cmd/server/main.go
 Once the server is running, the dashboard is available at:
 **[http://localhost:8317/static/management.html](http://localhost:8317/static/management.html)**
 
-> [!TIP]
-> Make sure to set a strong `secret-key` in your `config.yaml` to secure the dashboard.
+> [!IMPORTANT]
+> You **MUST** set a `secret-key` in your `config.yaml` under `remote-management` to access the dashboard.
+>
+> ```yaml
+> remote-management:
+>   secret-key: "your-secure-key"
+> ```
 
 ---
 
