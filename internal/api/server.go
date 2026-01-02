@@ -5,8 +5,9 @@
 package api
 
 import (
-	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules"
 	ampmodule "github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules/amp"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/database"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/managementasset"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
@@ -34,6 +36,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers/gemini"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers/openai"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/api/ratelimit"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -316,6 +319,7 @@ func (s *Server) setupRoutes() {
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
+	v1.Use(middleware.EnforceModelPolicy())
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
@@ -328,6 +332,7 @@ func (s *Server) setupRoutes() {
 	// Gemini compatible API routes
 	v1beta := s.engine.Group("/v1beta")
 	v1beta.Use(AuthMiddleware(s.accessManager))
+	v1beta.Use(middleware.EnforceModelPolicy())
 	{
 		v1beta.GET("/models", geminiHandlers.GeminiModels)
 		v1beta.POST("/models/*action", geminiHandlers.GeminiHandler)
@@ -599,6 +604,10 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.POST("/auth-files/import", s.mgmt.ImportAllAuthFiles)
 		mgmt.DELETE("/auth-files", s.mgmt.DeleteAuthFile)
 		mgmt.POST("/vertex/import", s.mgmt.ImportVertexCredential)
+
+		mgmt.GET("/advanced-keys", s.mgmt.ListManagedKeys)
+		mgmt.POST("/advanced-keys", s.mgmt.CreateManagedKey)
+		mgmt.DELETE("/advanced-keys/:hash", s.mgmt.DeleteManagedKey)
 
 		mgmt.GET("/anthropic-auth-url", s.mgmt.RequestAnthropicToken)
 		mgmt.GET("/codex-auth-url", s.mgmt.RequestCodexToken)
@@ -1015,32 +1024,97 @@ func (s *Server) SetWebsocketAuthChangeHandler(fn func(bool, bool)) {
 // it allows all requests (legacy behaviour).
 func AuthMiddleware(manager *sdkaccess.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if manager == nil {
-			c.Next()
-			return
-		}
-
-		result, err := manager.Authenticate(c.Request.Context(), c.Request)
-		if err == nil {
-			if result != nil {
+		// 1. Try Standard Static Config Auth
+		if manager != nil {
+			result, err := manager.Authenticate(c.Request.Context(), c.Request)
+			if err == nil && result != nil {
 				c.Set("apiKey", result.Principal)
 				c.Set("accessProvider", result.Provider)
 				if len(result.Metadata) > 0 {
 					c.Set("accessMetadata", result.Metadata)
 				}
+				c.Next()
+				return
 			}
-			c.Next()
-			return
+			// If error is NOT "Invalid" or "No Creds", legitimate error?
+			// Actually manager returns specific errors. We proceed to check DB if invalid.
 		}
 
-		switch {
-		case errors.Is(err, sdkaccess.ErrNoCredentials):
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing API key"})
-		case errors.Is(err, sdkaccess.ErrInvalidCredential):
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
-		default:
-			log.Errorf("authentication middleware error: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Authentication service error"})
+		// 2. Try Managed Keys (Database)
+		// Extract key manually since manager failed/didn't find it.
+		key := extractAPIKey(c.Request)
+		if key != "" {
+			// Hash key (using SHA256 for speed, consistent with our design)
+			// Note: We need to ensure we use same hash as creation.
+			hashed := hashKey(key)
+
+			managedKey, err := database.GetManagedKey(hashed)
+			if err == nil && managedKey != nil {
+				// 2a. Check Active
+				if !managedKey.IsActive {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "API key is disabled"})
+					return
+				}
+
+				// 2b. Check Expiration
+				if !managedKey.ExpiresAt.IsZero() && time.Now().After(managedKey.ExpiresAt) {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "API key has expired"})
+					return
+				}
+
+				// 2c. Check Quota (Usage)
+				// We need to query total usage for this key.
+				// Since we don't have usage in memory yet, we query DB.
+				// Optimization: We could cache this or use a separate "usage_counter" table.
+				// For now, simple query.
+				requests, cost, err := database.GetUsageForKey(managedKey.KeyPrefix) // Prefix matching used for logging
+				if err == nil {
+					if managedKey.QuotaLimitUSD > 0 && cost >= managedKey.QuotaLimitUSD {
+						c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{"error": "Quota limit exceeded"})
+						return
+					}
+					if managedKey.QuotaLimitRequests > 0 && requests >= managedKey.QuotaLimitRequests {
+						c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{"error": "Request quota limit exceeded"})
+						return
+					}
+				}
+
+				// 2d. Check Rate Limit (RPM)
+				if managedKey.RateLimitRPM > 0 {
+					if !ratelimit.GlobalManager.Allow(managedKey.KeyHash, managedKey.RateLimitRPM) {
+						// 429 Too Many Requests
+						c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
+						return
+					}
+				}
+
+
+				// We will implement RateLimiter in a separate step or file.
+				
+				// Success
+				c.Set("apiKey", "managed:"+managedKey.Label) // distinguishing prefix
+				c.Set("accessProvider", "managed")
+				c.Set("managedKey", managedKey) // Store full object for Model middleware
+				c.Next()
+				return
+			}
 		}
+
+		// 3. Fallback to Unauthorized
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
 	}
+}
+
+func extractAPIKey(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	return r.Header.Get("X-API-Key")
+}
+
+func hashKey(key string) string {
+	h := sha256.New()
+	h.Write([]byte(key))
+	return hex.EncodeToString(h.Sum(nil))
 }
