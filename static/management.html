@@ -2593,25 +2593,18 @@
   async function fetchAvailableModelsForSelector() {
     const container = document.getElementById('create-key-model-selector');
     try {
-      const res = await fetch(`/v0/management/auth-files/models?key=${MANAGEMENT_KEY}`, { headers: { 'Authorization': `Bearer ${MANAGEMENT_KEY}` } });
+      const res = await fetch(`/v0/management/registry/models?key=${MANAGEMENT_KEY}`, { headers: { 'Authorization': `Bearer ${MANAGEMENT_KEY}` } });
       const data = await res.json();
-      const models = data.models || [];
+      // The endpoint returns { "models": [ {id: "name", ...}, ... ] }
+      // We map to just IDs for the check list
+      const fetchedModels = (data.models || []).map(m => m.id);
 
-      const standardModels = [
-        'gemini-3-pro-preview',
-        'gpt-oss-120b-medium',
-        'gemini-3-pro-image-preview',
-        'gemini-claude-sonnet-4-5',
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-claude-sonnet-4-5-thinking',
-        'gemini-claude-opus-4-5-thinking',
-        'gemini-2.5-computer-use-preview-10-2025'
-      ];
+      const standardModels = []; // No longer hardcoding defaults, rely on registry
+      const allModels = [...new Set([...standardModels, ...fetchedModels])].sort();
 
       container.innerHTML = '';
       if (allModels.length === 0) {
-        container.innerHTML = '<div class="text-sm text-muted">No models detected.</div>';
+        container.innerHTML = '<div class="text-sm text-muted">No models found in registry.</div>';
         return;
       }
 

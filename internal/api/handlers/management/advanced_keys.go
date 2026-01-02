@@ -9,7 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/database"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
 )
+
+// ListRegistryModels returns all available models from the global registry.
+func (h *Handler) ListRegistryModels(c *gin.Context) {
+	reg := registry.GetGlobalRegistry()
+	models := reg.GetAvailableModels("openai")
+	c.JSON(http.StatusOK, gin.H{"models": models})
+}
 
 // ListManagedKeys returns all managed keys.
 func (h *Handler) ListManagedKeys(c *gin.Context) {
