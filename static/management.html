@@ -105,6 +105,15 @@
       transform: translateY(-2px) scale(1.002);
     }
 
+    .glass-no-hover {
+      background: linear-gradient(127.09deg, rgba(6, 11, 40, 0.94) 19.41%, rgba(10, 14, 35, 0.49) 76.65%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
     .glass-input {
       background: rgba(15, 21, 53, 0.55);
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -699,7 +708,7 @@
       <div id="create-key-modal" class="fixed inset-0 z-[60] hidden">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCreateKeyModal()"></div>
         <div
-          class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg glass p-6 rounded-2xl shadow-2xl border border-white/10">
+          class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg glass-no-hover p-6 rounded-2xl shadow-2xl border border-white/10">
           <h3 class="text-xl font-bold mb-4">Create New API Key</h3>
           <form id="create-key-form" onsubmit="handleCreateKey(event)">
             <div class="space-y-4">
@@ -761,7 +770,7 @@
       <div id="new-key-display-modal" class="fixed inset-0 z-[70] hidden">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
         <div
-          class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md glass p-8 rounded-2xl shadow-2xl border border-accent/20 text-center">
+          class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md glass-no-hover p-8 rounded-2xl shadow-2xl border border-accent/20 text-center">
           <div class="w-16 h-16 bg-success/20 text-success rounded-full flex items-center justify-center mx-auto mb-4">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
