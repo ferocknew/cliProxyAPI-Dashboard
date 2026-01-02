@@ -1401,6 +1401,9 @@
     const toggle = document.getElementById('auto-refresh-toggle');
     if (toggle) toggle.checked = ar;
     if (ar) startAutoRefresh();
+
+    // Pre-load models for playground
+    loadModels();
   });
 
   function toggleAutoRefresh() {
@@ -2230,35 +2233,30 @@
   async function loadModels() {
     const select = document.getElementById('model-select');
     try {
-      // Fetch models from /v1/models (requires auth usually, but we are management)
-      // Since /v1/models might need Client API Key, and we are in management, we should use the management key or try without.
-      // Actually, the server.go unifiedModelsHandler routes to /v1/models.
-      // Let's try fetching with the CLIENT key stored in localStorage (playground_api_key).
-      let API_KEY = localStorage.getItem('playground_api_key') || 'sk-antigravity-client-key';
-
-      const res = await fetch('/v1/models', { headers: { 'Authorization': `Bearer ${API_KEY}` } });
+      // Use the management registry endpoint (doesn't require client API auth)
+      const res = await fetch(`/v0/management/registry/models?key=${MANAGEMENT_KEY}`, { headers: { 'Authorization': `Bearer ${MANAGEMENT_KEY}` } });
       if (!res.ok) throw new Error('Failed to fetch models');
 
       const data = await res.json();
-      const models = data.data || [];
+      const models = (data.models || []).map(m => m.id).filter(Boolean);
 
       select.innerHTML = '<option value="" disabled selected>Select Model</option>';
       // Sort models
-      models.sort((a, b) => a.id.localeCompare(b.id)).forEach(m => {
+      models.sort((a, b) => a.localeCompare(b)).forEach(modelId => {
         const opt = document.createElement('option');
-        opt.value = m.id;
-        opt.textContent = m.id;
+        opt.value = modelId;
+        opt.textContent = modelId;
         select.appendChild(opt);
       });
 
       // Restore selection
       const savedModel = localStorage.getItem('selected_model');
-      if (savedModel && models.find(m => m.id === savedModel)) {
+      if (savedModel && models.includes(savedModel)) {
         select.value = savedModel;
       }
 
     } catch (e) {
-      console.error(e);
+      console.error('loadModels error:', e);
       // Fallback
       select.innerHTML = '<option value="" disabled>Error loading models</option><option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option><option value="gpt-4o">gpt-4o</option><option value="claude-3-5-sonnet">claude-3-5-sonnet</option>';
     }
