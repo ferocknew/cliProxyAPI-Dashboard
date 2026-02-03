@@ -1,28 +1,21 @@
-FROM golang:1.24-alpine AS builder
-
-WORKDIR /app
-
-COPY go.mod go.sum ./
-
-RUN go mod download
-
-COPY . .
-
-ARG VERSION=dev
-ARG COMMIT=none
-ARG BUILD_DATE=unknown
-
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X 'main.Version=${VERSION}' -X 'main.Commit=${COMMIT}' -X 'main.BuildDate=${BUILD_DATE}'" -o ./CLIProxyAPI ./cmd/server/
-
 FROM alpine:3.22.0
 
 RUN apk add --no-cache tzdata
 
 RUN mkdir /CLIProxyAPI
 
-COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
+# 复制预编译文件
+COPY app/CLIProxyAPI_*.tar.gz /tmp/
 
-COPY config.example.yaml /CLIProxyAPI/config.example.yaml
+# 解压预编译文件
+RUN tar -xzf /tmp/CLIProxyAPI_*.tar.gz -C /tmp/ && \
+    mv /tmp/cli-proxy-api /CLIProxyAPI/CLIProxyAPI && \
+    chmod +x /CLIProxyAPI/CLIProxyAPI
+
+# 从压缩包中复制示例配置和 README
+RUN tar -xzf /tmp/CLIProxyAPI_*.tar.gz -C /tmp/ config.example.yaml README.md && \
+    mv /tmp/config.example.yaml /CLIProxyAPI/config.example.yaml && \
+    rm -rf /tmp/*
 
 WORKDIR /CLIProxyAPI
 
