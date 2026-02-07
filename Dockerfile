@@ -12,10 +12,11 @@ RUN tar -xzf /tmp/CLIProxyAPI_*.tar.gz -C /tmp/ && \
     mv /tmp/cli-proxy-api /CLIProxyAPI/CLIProxyAPI && \
     chmod +x /CLIProxyAPI/CLIProxyAPI
 
-# 从压缩包中复制示例配置和 README
-RUN tar -xzf /tmp/CLIProxyAPI_*.tar.gz -C /tmp/ config.example.yaml README.md && \
-    mv /tmp/config.example.yaml /CLIProxyAPI/config.example.yaml && \
-    rm -rf /tmp/*
+# 清理临时文件
+RUN rm -rf /tmp/*
+
+# 从项目目录复制示例配置
+COPY config.example.yaml /CLIProxyAPI/config.example.yaml
 
 WORKDIR /CLIProxyAPI
 
